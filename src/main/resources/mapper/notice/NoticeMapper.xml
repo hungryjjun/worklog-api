@@ -16,4 +16,18 @@
          WHERE del_yn = 'N'
          ORDER BY notice_seq DESC
     </select>
+    
+    <insert id="insertNotice" parameterType="com.hungryjjun.worklogapi.notice.Notice" useGeneratedKeys="true" keyProperty="noticeSeq">
+    	INSERT INTO notice (
+			category
+		  , title
+		  , content
+		  , create_emp_no
+		) VALUES (
+			#{category}			
+		  , #{title}
+		  , #{content}
+		  , #{createEmpNo}
+		)
+    </insert>
 </mapper>

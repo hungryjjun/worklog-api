@@ -8,4 +8,5 @@ import org.apache.ibatis.annotations.Mapper;
 public interface NoticeMapper {
 	
 	List<Notice> selectNoticeList();
+	int insertNotice(Notice notice);
 }

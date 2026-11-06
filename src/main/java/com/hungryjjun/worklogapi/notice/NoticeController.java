@@ -1,8 +1,13 @@
 package com.hungryjjun.worklogapi.notice;
 
 import java.util.List;
+import java.util.Map;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,5 +24,11 @@ public class NoticeController {
 	@GetMapping
 	public List<Notice> getNotices(){
 		return noticeService.getNoticeList();
+	}
+	
+	@PostMapping
+	public ResponseEntity<Map<String, Long>> createNotice(@RequestBody NoticeCreateRequest request) {
+		Long noticeSeq = noticeService.createNotice(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("noticeSeq", noticeSeq));
 	}
 }

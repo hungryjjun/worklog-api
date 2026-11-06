@@ -16,5 +16,16 @@ public class NoticeService {
 	public List<Notice> getNoticeList(){
 		return noticeMapper.selectNoticeList();
 	}
+	
+	public Long createNotice(NoticeCreateRequest request) {
+		Notice notice = new Notice();
+		notice.setCategory(request.category());
+		notice.setTitle(request.title());
+		notice.setContent(request.content());
+		notice.setCreateEmpNo(request.createEmpNo());
+		
+		noticeMapper.insertNotice(notice);
+		return notice.getNoticeSeq();
+	}
 
 }
