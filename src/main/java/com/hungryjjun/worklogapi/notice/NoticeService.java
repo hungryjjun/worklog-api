@@ -1,8 +1,10 @@
 package com.hungryjjun.worklogapi.notice;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class NoticeService {
@@ -26,6 +28,14 @@ public class NoticeService {
 		
 		noticeMapper.insertNotice(notice);
 		return notice.getNoticeSeq();
+	}
+
+	@Transactional
+	public Optional<Notice> getNotice(Long noticeSeq) {
+		if (noticeMapper.updateViewCnt(noticeSeq) == 0) {
+			return Optional.empty();
+		}
+		return Optional.ofNullable(noticeMapper.selectNotice(noticeSeq));
 	}
 
 }

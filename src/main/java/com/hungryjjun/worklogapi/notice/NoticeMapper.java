@@ -9,4 +9,6 @@ public interface NoticeMapper {
 	
 	List<Notice> selectNoticeList();
 	int insertNotice(Notice notice);
+	Notice selectNotice(Long noticeSeq);
+	int updateViewCnt(Long noticeSeq);
 }

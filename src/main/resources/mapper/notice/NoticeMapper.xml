@@ -30,4 +30,24 @@
 		  , #{createEmpNo}
 		)
     </insert>
+
+    <select id="selectNotice" resultType="com.hungryjjun.worklogapi.notice.Notice">
+        SELECT notice_seq
+             , category
+             , title
+             , content
+             , view_cnt
+             , create_emp_no
+             , create_at
+          FROM notice
+         WHERE notice_seq = #{noticeSeq}
+           AND del_yn = 'N'
+    </select>
+
+    <update id="updateViewCnt">
+        UPDATE notice
+           SET view_cnt = view_cnt + 1
+         WHERE notice_seq = #{noticeSeq}
+           AND del_yn = 'N'
+    </update>
 </mapper>
