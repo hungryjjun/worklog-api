@@ -15,8 +15,8 @@ public class Notice {
 	public Long getNoticeSeq() {
 		return noticeSeq;
 	}
-	public void setNoticeSeq(Long notieSeq) {
-		this.noticeSeq = notieSeq;
+	public void setNoticeSeq(Long noticeSeq) {
+		this.noticeSeq = noticeSeq;
 	}
 	public String getCategory() {
 		return category;
