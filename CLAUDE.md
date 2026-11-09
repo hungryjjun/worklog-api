@@ -22,7 +22,7 @@ Use `./mvnw` (bash) or `.\mvnw.cmd` (PowerShell/cmd).
 
 - A local MySQL at `localhost:3306`, database `worklog`, user `root` (see `src/main/resources/application.properties`).
 - The `DB_PASSWORD` environment variable must be set. The app and the `@SpringBootTest` context test both fail without a reachable DB.
-- The schema is not in the repo (no migrations or `schema.sql`). Tables such as `notice` (columns `notice_seq`, `category`, `title`, `content`, `view_cnt`, `create_emp_no`, `create_at`, `del_yn`) must already exist.
+- DB 스키마는 `db/schema.sql` 참고
 
 ## Architecture
 
@@ -39,6 +39,8 @@ MyBatis conventions (from `application.properties`):
 - `map-underscore-to-camel-case=true`, so snake_case columns map to camelCase fields without explicit resultMaps.
 - Inserts use `useGeneratedKeys="true" keyProperty="..."` to fill the PK on the domain object, which the service then returns.
 - Deletes are soft deletes (`del_yn = 'N'` filters in selects).
+
+설계 결정은 `docs/decisions.md` 참고
 
 ## 코딩 규칙
 
