@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/notices")
 public class NoticeController {
@@ -35,7 +37,7 @@ public class NoticeController {
 	}
 	
 	@PostMapping
-	public ResponseEntity<Map<String, Long>> createNotice(@RequestBody NoticeCreateRequest request) {
+	public ResponseEntity<Map<String, Long>> createNotice(@Valid @RequestBody NoticeCreateRequest request) {
 		Long noticeSeq = noticeService.createNotice(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("noticeSeq", noticeSeq));
 	}
