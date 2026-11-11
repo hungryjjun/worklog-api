@@ -11,4 +11,5 @@ public interface NoticeMapper {
 	int insertNotice(Notice notice);
 	Notice selectNotice(Long noticeSeq);
 	int updateViewCnt(Long noticeSeq);
+	boolean existsRecentDuplicate(Notice notice);
 }

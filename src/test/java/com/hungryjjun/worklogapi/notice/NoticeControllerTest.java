@@ -23,6 +23,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import com.hungryjjun.worklogapi.common.ConflictException;
+
 // 웹 계층(Controller, ControllerAdvice)만 띄우고 Service는 mock으로 대체한다. DB가 필요 없다.
 @WebMvcTest(NoticeController.class)
 class NoticeControllerTest {
@@ -170,6 +172,24 @@ class NoticeControllerTest {
 					.andExpect(jsonPath("$.errors[0].message").value("구분은 GENERAL, IMPORTANT, HR 중 하나여야 합니다."));
 
 			assertServiceNotCalled();
+		}
+	}
+
+	@Nested
+	@DisplayName("중복 등록")
+	class Conflict {
+
+		@Test
+		@DisplayName("#15 Service가 ConflictException을 던지면 409와 메시지를 반환한다")
+		void duplicateNotice() throws Exception {
+			given(noticeService.createNotice(any()))
+					.willThrow(new ConflictException("같은 내용의 공지가 방금 등록되었습니다. 잠시 후 다시 시도해 주세요."));
+
+			postJson(body("GENERAL", "제목", "내용", "E001"))
+					.andExpect(status().isConflict())
+					.andExpect(jsonPath("$.status").value(409))
+					.andExpect(jsonPath("$.message").value("같은 내용의 공지가 방금 등록되었습니다. 잠시 후 다시 시도해 주세요."))
+					.andExpect(jsonPath("$.errors", hasSize(0)));
 		}
 	}
 
