@@ -36,4 +36,12 @@ public class GlobalExceptionHandler {
 		ErrorResponse body = new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "요청 본문의 형식이 올바르지 않습니다.", List.of());
 		return ResponseEntity.badRequest().body(body);
 	}
+
+	// 중복 등록 등 데이터 상태와 충돌하면 409를 반환한다.
+	// ConflictException의 메시지는 Service에서 사용자용 문구로 직접 작성하므로 그대로 응답한다.
+	@ExceptionHandler(ConflictException.class)
+	public ResponseEntity<ErrorResponse> handleConflict(ConflictException e) {
+		ErrorResponse body = new ErrorResponse(HttpStatus.CONFLICT.value(), e.getMessage(), List.of());
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+	}
 }

@@ -50,4 +50,21 @@
          WHERE notice_seq = #{noticeSeq}
            AND del_yn = 'N'
     </update>
+
+	<!--
+		같은 작성자가 같은 제목·내용으로 10초 안에 등록한 공지가 있는지 확인한다.
+		- 시간은 create_at을 채우는 DB 시계(NOW())로 비교한다.
+		- 테이블 collation(utf8mb4_0900_ai_ci)은 대소문자·악센트를 무시하므로 utf8mb4_bin으로 정확히 비교한다.
+	-->
+	<select id="existsRecentDuplicate" resultType="boolean">
+		SELECT EXISTS (
+			SELECT 1
+			  FROM notice
+			 WHERE create_emp_no = #{createEmpNo}
+			   AND title = #{title} COLLATE utf8mb4_bin
+			   AND content = #{content} COLLATE utf8mb4_bin
+			   AND del_yn = 'N'
+			   AND create_at &gt;= NOW() - INTERVAL 10 SECOND
+		)
+	</select>
 </mapper>
