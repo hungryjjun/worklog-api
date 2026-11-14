@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -20,11 +21,19 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
 		List<ErrorResponse.FieldErrorDetail> errors = e.getBindingResult().getFieldErrors().stream()
-				.map(fieldError -> new ErrorResponse.FieldErrorDetail(fieldError.getField(), fieldError.getDefaultMessage()))
+				.map(fieldError -> new ErrorResponse.FieldErrorDetail(fieldError.getField(), toMessage(fieldError)))
 				.toList();
 
 		ErrorResponse body = new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "입력값이 올바르지 않습니다.", errors);
 		return ResponseEntity.badRequest().body(body);
+	}
+
+	// 타입 변환 실패(page=abc 등)의 기본 메시지에는 자바 타입명 등 내부 정보가 들어 있으므로 고정 문구로 바꾼다.
+	private String toMessage(FieldError fieldError) {
+		if (fieldError.isBindingFailure()) {
+			return "값의 형식이 올바르지 않습니다.";
+		}
+		return fieldError.getDefaultMessage();
 	}
 
 	// 요청 본문이 없거나 JSON 문법·타입이 맞지 않을 때 400을 반환한다.

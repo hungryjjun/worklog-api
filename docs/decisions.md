@@ -66,4 +66,32 @@
 
 - 조회 후 삽입 방식이라 **정확히 동시에 도착한 두 요청은 둘 다 통과할 수 있다.** 둘 다 상대의 INSERT 전에 SELECT하기 때문이며, `@Transactional`만으로는 막히지 않는다(REPEATABLE READ의 일반 SELECT는 잠금 없이 스냅샷을 읽는다).
 - 동시 요청까지 막아야 하면 멱등성 키(클라이언트가 등록 시도마다 UUID를 보내고 서버가 UNIQUE 제약으로 저장)를 도입한다. 화면에서는 등록 중 버튼 비활성화를 함께 적용한다.
-- 중복 조회용 인덱스 `(create_emp_no, create_at)`는 페이징 작업 때 함께 검토한다.
+- 중복 조회용 인덱스 `(create_emp_no, create_at)`는 더미 데이터로 실행계획을 비교하는 작업에서 검토한다.
+
+## 목록 페이징
+
+### 요청
+
+- `GET /api/<plural>?page=1&size=20` 형태로 받는다. `page`는 1부터 시작하고 기본값 1, `size`는 기본값 20이며 20, 50, 100만 허용한다.
+- 파라미터는 요청 record(`NoticeSearchRequest`)로 받고, 기본값은 compact 생성자에서 채운다. 허용값 검증은 재사용할 수 있도록 커스텀 어노테이션 `@AllowedValues`로 만든다.
+- 잘못된 값은 기존 공통 처리기로 400을 응답한다. 숫자가 아닌 값(`page=abc`)의 기본 메시지에는 자바 타입명이 들어 있으므로 "값의 형식이 올바르지 않습니다."라는 고정 문구로 바꾼다.
+- `offset`은 `long`으로 계산한다. 큰 `page` 값에서 `int` 곱셈이 넘쳐 음수 OFFSET(SQL 오류, 500)이 되는 것을 막기 위해서다.
+
+### 응답
+
+- 공통 `PageResponse<T>(items, totalCount, page, size, totalPages)`로 응답한다. 페이지 번호 묶음(5개씩 등) 계산은 화면이 담당하고 API에는 넣지 않는다. 전자정부 `PaginationInfo`의 `pageSize`(묶음 크기) 역할이 화면으로 넘어간 것이다.
+- `totalPages`는 올림 나눗셈(`Math.ceilDiv`)으로 계산하며, 0건이면 0이다. 전자정부 식(`(total - 1) / n + 1`)은 0건에 1을 내지만, 실제 페이지가 없으므로 0이 정확하다고 판단했다. 화면은 0건이면 안내 문구를 보여주고 페이징을 숨긴다.
+- 전체 페이지보다 큰 `page`는 200과 빈 `items`로 응답하고 메타정보는 정상값으로 채운다. 데이터 삭제로 페이지 수가 줄어드는 경우도 자연스럽게 처리되고, 요청값과 응답값이 달라지는 보정 방식보다 예측하기 쉽기 때문이다. 화면은 `items`가 비었는데 `totalPages > 0`이면 마지막 페이지로 이동한다.
+
+### 조회
+
+- 목록 항목은 상세용 `Notice`와 분리한 읽기 전용 record(`NoticeSummary`)로 내려준다. 목록 화면에 필요 없는 `content`(TEXT)를 조회하지 않고, `@JsonInclude(NON_NULL)`처럼 다른 null 필드까지 숨기는 부작용 없이 목록 응답 필드를 코드로 고정하기 위해서다.
+- record는 setter가 없으므로 MyBatis `<constructor>` 매핑에 `name`과 `javaType`을 명시한다.
+- 건수(`COUNT(*)`)와 목록(`LIMIT ? OFFSET ?`)은 쿼리를 나눈다. `SQL_CALC_FOUND_ROWS`는 deprecated이고, `COUNT(*) OVER()`는 0건일 때 전체 건수를 얻을 수 없다.
+- 두 쿼리는 `@Transactional(readOnly = true)` 안에서 실행해 같은 스냅샷을 읽게 한다. 그 사이의 등록·삭제로 건수와 목록이 어긋나지 않게 하기 위해서다.
+- `offset >= totalCount`(0건 포함)이면 결과가 빈 목록이 확실하므로 목록 쿼리를 생략한다.
+
+### 한계
+
+- OFFSET은 앞의 행을 모두 읽고 버리므로 뒤 페이지일수록 느려진다. 데이터가 많아지면 마지막으로 본 `notice_seq` 기준으로 다음 목록을 가져오는 방식(no-offset)을 검토한다.
+- 인덱스는 더미 데이터로 실행계획을 비교하면서 추가한다.

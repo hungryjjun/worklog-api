@@ -4,18 +4,40 @@
 
 <mapper namespace="com.hungryjjun.worklogapi.notice.NoticeMapper">
 
-    <select id="selectNoticeList" resultType="com.hungryjjun.worklogapi.notice.Notice">
-        SELECT notice_seq
-             , category
-             , title
-             , content
-             , view_cnt
-             , create_emp_no
-             , create_at
-          FROM notice
-         WHERE del_yn = 'N'
-         ORDER BY notice_seq DESC
-    </select>
+	<!--
+		NoticeSummary는 record라 setter가 없으므로 생성자 인자를 이름으로 지정해 매핑한다.
+		setter가 없으면 MyBatis가 인자 타입을 알 수 없으므로 javaType도 함께 적는다.
+	-->
+	<resultMap id="noticeSummaryMap" type="com.hungryjjun.worklogapi.notice.NoticeSummary">
+		<constructor>
+			<idArg column="notice_seq" name="noticeSeq" javaType="java.lang.Long"/>
+			<arg column="category" name="category" javaType="java.lang.String"/>
+			<arg column="title" name="title" javaType="java.lang.String"/>
+			<arg column="view_cnt" name="viewCnt" javaType="java.lang.Integer"/>
+			<arg column="create_emp_no" name="createEmpNo" javaType="java.lang.String"/>
+			<arg column="create_at" name="createAt" javaType="java.time.LocalDateTime"/>
+		</constructor>
+	</resultMap>
+
+	<!-- 목록 화면은 본문을 쓰지 않으므로 content는 조회하지 않는다. -->
+	<select id="selectNoticeList" resultMap="noticeSummaryMap">
+		SELECT notice_seq
+		     , category
+		     , title
+		     , view_cnt
+		     , create_emp_no
+		     , create_at
+		  FROM notice
+		 WHERE del_yn = 'N'
+		 ORDER BY notice_seq DESC
+		 LIMIT #{size} OFFSET #{offset}
+	</select>
+
+	<select id="countNoticeList" resultType="long">
+		SELECT COUNT(*)
+		  FROM notice
+		 WHERE del_yn = 'N'
+	</select>
     
     <insert id="insertNotice" parameterType="com.hungryjjun.worklogapi.notice.Notice" useGeneratedKeys="true" keyProperty="noticeSeq">
     	INSERT INTO notice (

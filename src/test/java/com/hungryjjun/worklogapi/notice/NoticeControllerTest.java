@@ -1,5 +1,6 @@
 package com.hungryjjun.worklogapi.notice;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsStringIgnoringCase;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
@@ -8,14 +9,21 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -24,6 +32,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import com.hungryjjun.worklogapi.common.ConflictException;
+import com.hungryjjun.worklogapi.common.PageResponse;
 
 // 웹 계층(Controller, ControllerAdvice)만 띄우고 Service는 mock으로 대체한다. DB가 필요 없다.
 @WebMvcTest(NoticeController.class)
@@ -172,6 +181,113 @@ class NoticeControllerTest {
 					.andExpect(jsonPath("$.errors[0].message").value("구분은 GENERAL, IMPORTANT, HR 중 하나여야 합니다."));
 
 			assertServiceNotCalled();
+		}
+	}
+
+	@Nested
+	@DisplayName("목록 조회 파라미터 검증")
+	class ListParams {
+
+		@Test
+		@DisplayName("P1 파라미터가 없으면 기본값으로 조회한다")
+		void noParams() throws Exception {
+			mockMvc.perform(get(URL))
+					.andExpect(status().isOk());
+		}
+
+		@ParameterizedTest(name = "size={0}")
+		@ValueSource(ints = { 20, 50, 100 })
+		@DisplayName("P2 size는 20, 50, 100을 허용한다")
+		void allowedSize(int size) throws Exception {
+			mockMvc.perform(get(URL).param("page", "1").param("size", String.valueOf(size)))
+					.andExpect(status().isOk());
+		}
+
+		@ParameterizedTest(name = "page={0}")
+		@ValueSource(strings = { "0", "-1" })
+		@DisplayName("P3 page가 1보다 작으면 400")
+		void pageLessThanOne(String page) throws Exception {
+			mockMvc.perform(get(URL).param("page", page))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(1)))
+					.andExpect(jsonPath("$.errors[0].field").value("page"))
+					.andExpect(jsonPath("$.errors[0].message").value("페이지는 1 이상이어야 합니다."));
+		}
+
+		@ParameterizedTest(name = "size={0}")
+		@ValueSource(strings = { "0", "10", "30", "200" })
+		@DisplayName("P4 size가 허용값이 아니면 400")
+		void sizeNotAllowed(String size) throws Exception {
+			mockMvc.perform(get(URL).param("size", size))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(1)))
+					.andExpect(jsonPath("$.errors[0].field").value("size"))
+					.andExpect(jsonPath("$.errors[0].message").value("페이지 크기는 20, 50, 100 중 하나여야 합니다."));
+		}
+
+		@Test
+		@DisplayName("P5 page와 size가 모두 틀리면 오류 2건")
+		void bothInvalid() throws Exception {
+			mockMvc.perform(get(URL).param("page", "0").param("size", "30"))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(2)));
+		}
+
+		@ParameterizedTest(name = "{0}=abc")
+		@ValueSource(strings = { "page", "size" })
+		@DisplayName("P6 숫자가 아니면 400과 고정 문구, 내부 정보 없음")
+		void notNumber(String param) throws Exception {
+			mockMvc.perform(get(URL).param(param, "abc"))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors[0].field").value(param))
+					.andExpect(jsonPath("$.errors[0].message").value("값의 형식이 올바르지 않습니다."))
+					.andExpect(content().string(not(containsStringIgnoringCase("java"))))
+					.andExpect(content().string(not(containsStringIgnoringCase("convert"))))
+					.andExpect(content().string(not(containsStringIgnoringCase("exception"))));
+		}
+	}
+
+	@Nested
+	@DisplayName("목록 조회 응답")
+	class ListResponse {
+
+		private final NoticeSummary summary =
+				new NoticeSummary(235L, "GENERAL", "제목", 3, "E001", LocalDateTime.of(2026, 11, 13, 9, 0));
+
+		@Test
+		@DisplayName("R1 파라미터가 없으면 page=1, size=20으로 조회하고 페이징 응답을 반환한다")
+		void defaultPaging() throws Exception {
+			given(noticeService.getNoticeList(any())).willReturn(PageResponse.of(List.of(summary), 235, 1, 20));
+
+			mockMvc.perform(get(URL))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.items", hasSize(1)))
+					.andExpect(jsonPath("$.items[0].noticeSeq").value(235))
+					.andExpect(jsonPath("$.items[0].title").value("제목"))
+					.andExpect(jsonPath("$.items[0].content").doesNotExist())
+					.andExpect(jsonPath("$.totalCount").value(235))
+					.andExpect(jsonPath("$.page").value(1))
+					.andExpect(jsonPath("$.size").value(20))
+					.andExpect(jsonPath("$.totalPages").value(12));
+
+			ArgumentCaptor<NoticeSearchRequest> captor = ArgumentCaptor.forClass(NoticeSearchRequest.class);
+			verify(noticeService).getNoticeList(captor.capture());
+			assertThat(captor.getValue().page()).isEqualTo(1);
+			assertThat(captor.getValue().size()).isEqualTo(20);
+		}
+
+		@Test
+		@DisplayName("R2 전달한 page, size가 Service까지 그대로 전달된다")
+		void passParams() throws Exception {
+			given(noticeService.getNoticeList(any())).willReturn(PageResponse.of(List.of(), 235, 2, 50));
+
+			mockMvc.perform(get(URL).param("page", "2").param("size", "50"))
+					.andExpect(status().isOk());
+
+			ArgumentCaptor<NoticeSearchRequest> captor = ArgumentCaptor.forClass(NoticeSearchRequest.class);
+			verify(noticeService).getNoticeList(captor.capture());
+			assertThat(captor.getValue().page()).isEqualTo(2);
+			assertThat(captor.getValue().size()).isEqualTo(50);
 		}
 	}
 

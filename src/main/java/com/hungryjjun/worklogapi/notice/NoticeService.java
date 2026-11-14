@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.hungryjjun.worklogapi.common.ConflictException;
+import com.hungryjjun.worklogapi.common.PageResponse;
 
 @Service
 public class NoticeService {
@@ -19,8 +20,17 @@ public class NoticeService {
 		this.noticeMapper = noticeMapper;
 	}
 	
-	public List<Notice> getNoticeList(){
-		return noticeMapper.selectNoticeList();
+	// 건수와 목록을 같은 읽기 전용 트랜잭션에서 조회해, 두 쿼리 사이의 등록·삭제로 결과가 어긋나지 않게 한다.
+	@Transactional(readOnly = true)
+	public PageResponse<NoticeSummary> getNoticeList(NoticeSearchRequest request) {
+		long totalCount = noticeMapper.countNoticeList();
+
+		// 0건이거나 요청한 페이지가 범위를 넘으면 결과가 빈 목록이므로 목록 쿼리를 생략한다.
+		List<NoticeSummary> items = (request.offset() >= totalCount)
+				? List.of()
+				: noticeMapper.selectNoticeList(request.size(), request.offset());
+
+		return PageResponse.of(items, totalCount, request.page(), request.size());
 	}
 	
 	public Long createNotice(NoticeCreateRequest request) {
