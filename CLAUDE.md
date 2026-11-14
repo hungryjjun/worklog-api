@@ -32,11 +32,13 @@ Code is organized **by feature package** under `com.hungryjjun.worklogapi` (e.g.
 - `XxxService`: `@Service`. Maps request records to domain objects and calls the mapper.
 - `XxxMapper`: a MyBatis `@Mapper` interface. Each method name must match a statement `id` in `src/main/resources/mapper/<feature>/XxxMapper.xml`, and the XML `namespace` must be the interface's fully qualified name.
 - Domain class (e.g. `Notice`): a mutable POJO with getters and setters, used as the MyBatis result and parameter type.
+- Read-only result DTOs (e.g. a list item like `NoticeSummary`): Java `record`s are allowed as MyBatis result types, mapped with a constructor `resultMap` (see below).
 - Request DTOs: Java `record`s (e.g. `NoticeCreateRequest`).
 
 MyBatis conventions (from `application.properties`):
 - Mapper XMLs are loaded from `classpath:mapper/**/*.xml`.
 - `map-underscore-to-camel-case=true`, so snake_case columns map to camelCase fields without explicit resultMaps.
+- 읽기 전용 결과는 record + constructor 매핑을 허용한다. record에는 setter가 없으므로 `<resultMap>` 안에 `<constructor><arg column="..." name="..." javaType="..."/></constructor>`로 인자를 이름 기준으로 명시한다. setter가 없으면 MyBatis가 타입을 추론하지 못하므로 `javaType`은 필수다. 컬럼 순서에 의존하는 자동 생성자 매핑은 쓰지 않는다.
 - Inserts use `useGeneratedKeys="true" keyProperty="..."` to fill the PK on the domain object, which the service then returns.
 - Deletes are soft deletes (`del_yn = 'N'` filters in selects).
 
