@@ -22,6 +22,7 @@ Use `./mvnw` (bash) or `.\mvnw.cmd` (PowerShell/cmd).
 
 - A local MySQL at `localhost:3306`, database `worklog`, user `root` (see `src/main/resources/application.properties`).
 - The `DB_PASSWORD` environment variable must be set. The app and the `@SpringBootTest` context test both fail without a reachable DB.
+- The `WORKLOG_ANTHROPIC_API_KEY` environment variable must be set to run the app (Claude API via Spring AI). Tests do not need it. Do not use the name `ANTHROPIC_API_KEY`, because it conflicts with Claude Code's subscription authentication.
 - DB 스키마는 `db/schema.sql` 참고
 
 ## Architecture
@@ -51,6 +52,7 @@ MyBatis conventions (from `application.properties`):
 - 의존성은 생성자 주입을 사용하고, 요청 DTO는 `record`로 만든다.
 - 테이블·컬럼명은 소문자 snake_case를 쓴다. MyBatis `#{}`에는 Java 필드명을 쓰며, `${}`는 사용하지 않는다.
 - 비밀번호·API 키는 환경변수로만 사용하고, 코드와 설정 파일에 직접 쓰지 않는다.
+- 환경변수 값(`WORKLOG_ANTHROPIC_API_KEY`, `DB_PASSWORD` 등)은 출력하거나 조회하지 않는다. `echo`, `$env:`, `printenv`, `Get-ChildItem env:`, 로그 출력 모두 해당한다. 키 값은 코드·설정·로그·커밋 어디에도 남기지 않는다.
 - 소스 파일은 탭으로 들여쓴다.
 
 ## 작업 방식
