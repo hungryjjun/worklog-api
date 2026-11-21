@@ -28,7 +28,22 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<spring-ai.version>2.0.2</spring-ai.version>
 	</properties>
+
+	<!-- Spring AI 모듈들의 버전을 BOM 하나로 맞춘다. 2.0.x는 Spring Boot 4.0.x, 4.1.x를 지원한다. -->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -56,6 +71,12 @@
 		    <groupId>com.mysql</groupId>
 		    <artifactId>mysql-connector-j</artifactId>
 		    <scope>runtime</scope>
+		</dependency>
+
+		<!-- Claude API 연동. 버전은 위 spring-ai-bom이 관리한다. -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-anthropic</artifactId>
 		</dependency>
 
 	</dependencies>
