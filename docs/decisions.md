@@ -95,3 +95,36 @@
 
 - OFFSET은 앞의 행을 모두 읽고 버리므로 뒤 페이지일수록 느려진다. 데이터가 많아지면 마지막으로 본 `notice_seq` 기준으로 다음 목록을 가져오는 방식(no-offset)을 검토한다.
 - 인덱스는 더미 데이터로 실행계획을 비교하면서 추가한다.
+
+## AI 채팅
+
+### 연동 방식
+
+- Spring AI 2.0.2(`spring-ai-bom`)와 `spring-ai-starter-model-anthropic`으로 Claude API를 호출한다. 2.0.x는 Spring Boot 4.0.x·4.1.x를 지원하고, 2.1.x는 Boot 4.2 대상이라 쓰지 않는다.
+- 설정 속성은 2.0.2 jar의 메타데이터 기준으로 `spring.ai.anthropic.chat.model`, `chat.max-tokens`를 쓴다. 1.x 시절의 `chat.options.*`는 2.0에서 deprecated다.
+- Service는 `ChatClient`(`prompt().user().call().content()`)로 호출한다. 테스트에서는 `ChatModel.call(Prompt)`만 가짜로 구현해 넣으므로 실제 API를 호출하지 않는다.
+
+### 모델
+
+- `claude-haiku-5-5`를 쓴다. Claude 모델 중 가장 저렴하고 빠르며, 이후 단계의 목표(문장에서 검색 조건을 뽑는 일)에는 상위 모델이 필요하지 않다고 판단했다. 품질이 부족하면 그때 비교한다.
+
+### API 키
+
+- 키는 환경변수 `WORKLOG_ANTHROPIC_API_KEY`로만 주입한다(`spring.ai.anthropic.api-key=${WORKLOG_ANTHROPIC_API_KEY}`).
+- 일반적인 이름인 `ANTHROPIC_API_KEY`를 쓰지 않는 이유는 VS Code의 Claude Code가 이 변수를 발견하면 구독 인증 대신 API 키 과금으로 동작하기 때문이다. 프로젝트 전용 접두어로 충돌을 피한다.
+- 키가 없으면 앱 시작이 실패한다(`DB_PASSWORD`와 같은 방식). 테스트는 `@SpringBootTest`에만 더미 키를 넣어 키 없는 PC에서도 통과한다.
+
+### 비용 상한
+
+- Console은 선불 크레딧이고 자동 충전을 꺼 두었으므로, 한 번의 호출 비용을 코드와 설정으로 제한한다.
+- 입력: 질문 500자 이하(`@Size(max = 500)`). system 지시문은 "한국어로 간결하게 답한다." 한 줄만 둔다.
+- 출력: 최대 500토큰(`spring.ai.anthropic.chat.max-tokens=500`). 간결하게 답하라는 지시로 답이 중간에 잘리는 일을 줄인다.
+- 장애 시: 타임아웃 30초, 재시도 1회(`timeout=30s`, `max-retries=1`). 기본값(60초, 2회)이면 최악의 경우 3분 가까이 기다린 뒤에야 실패 응답을 받는다.
+
+### 실패 응답
+
+- AI 호출 실패(키 오류, 시간 초과, 크레딧 소진, 빈 응답)는 `common/ExternalServiceException`으로 감싸고 `GlobalExceptionHandler`에서 **502 Bad Gateway**로 응답한다. 메시지는 "AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요."로 고정한다.
+- 502를 고른 이유: 우리 서버는 정상인데 상위(upstream) 서비스가 실패한 상황을 뜻하는 코드이기 때문이다. 500은 우리 서버의 버그와 구분되지 않고, 503은 우리 서버 자체가 일시적으로 사용 불가라는 뜻이며, 504는 시간 초과에만 해당한다. 화면 입장에서 원인별 처리가 다르지 않으므로 502 하나로 통일한다.
+- Spring AI·Anthropic SDK의 예외 종류가 문서에 정리되어 있지 않아, Service의 외부 호출 경계에서 `RuntimeException`을 모두 감싼다.
+- 외부 오류 메시지는 응답에 넣지 않고 cause까지 로그로만 남긴다. 인증 실패나 계정 상태 같은 내부 정보가 들어 있기 때문이다.
+- 예외 이름을 AI 전용이 아닌 `ExternalServiceException`으로 둔 것은 `common`이 기능 패키지에 의존하지 않게 하고, 이후 다른 외부 연동에도 재사용하기 위해서다.

@@ -53,4 +53,14 @@ public class GlobalExceptionHandler {
 		ErrorResponse body = new ErrorResponse(HttpStatus.CONFLICT.value(), e.getMessage(), List.of());
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
 	}
+
+	// 외부 서비스(Claude API 등) 호출 실패 시 502를 반환한다.
+	// 외부 오류 메시지(인증 실패, 크레딧 부족 등 상세 원인)는 응답에 넣지 않고, cause까지 로그로만 남긴다.
+	@ExceptionHandler(ExternalServiceException.class)
+	public ResponseEntity<ErrorResponse> handleExternalService(ExternalServiceException e) {
+		log.error("외부 서비스 호출 실패", e);
+
+		ErrorResponse body = new ErrorResponse(HttpStatus.BAD_GATEWAY.value(), e.getMessage(), List.of());
+		return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+	}
 }
