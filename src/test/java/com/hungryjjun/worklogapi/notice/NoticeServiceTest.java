@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -40,6 +42,11 @@ class NoticeServiceTest {
 		noticeService = new NoticeService(noticeMapper);
 	}
 
+	// 검색 조건 없이 page, size만 지정한 요청
+	private static NoticeSearchRequest pageRequest(Integer page, Integer size) {
+		return new NoticeSearchRequest(page, size, null, null, null, null, null);
+	}
+
 	@Nested
 	@DisplayName("목록 조회 페이징")
 	class GetNoticeList {
@@ -50,12 +57,12 @@ class NoticeServiceTest {
 		@Test
 		@DisplayName("L1 page와 size로 offset을 계산해 Mapper에 전달한다 (page=3, size=20 → offset 40)")
 		void passOffset() {
-			given(noticeMapper.countNoticeList()).willReturn(235L);
-			given(noticeMapper.selectNoticeList(20, 40L)).willReturn(List.of(summary));
+			given(noticeMapper.countNoticeList(any())).willReturn(235L);
+			given(noticeMapper.selectNoticeList(any(), eq(20), eq(40L))).willReturn(List.of(summary));
 
-			PageResponse<NoticeSummary> response = noticeService.getNoticeList(new NoticeSearchRequest(3, 20));
+			PageResponse<NoticeSummary> response = noticeService.getNoticeList(pageRequest(3, 20));
 
-			verify(noticeMapper).selectNoticeList(20, 40L);
+			verify(noticeMapper).selectNoticeList(any(), eq(20), eq(40L));
 			assertThat(response.items()).containsExactly(summary);
 			assertThat(response.totalCount()).isEqualTo(235);
 			assertThat(response.page()).isEqualTo(3);
@@ -66,11 +73,11 @@ class NoticeServiceTest {
 		@Test
 		@DisplayName("L2 0건이면 목록 쿼리를 실행하지 않고 빈 목록, 0페이지를 반환한다")
 		void zeroCount() {
-			given(noticeMapper.countNoticeList()).willReturn(0L);
+			given(noticeMapper.countNoticeList(any())).willReturn(0L);
 
-			PageResponse<NoticeSummary> response = noticeService.getNoticeList(new NoticeSearchRequest(null, null));
+			PageResponse<NoticeSummary> response = noticeService.getNoticeList(pageRequest(null, null));
 
-			verify(noticeMapper, never()).selectNoticeList(anyInt(), anyLong());
+			verify(noticeMapper, never()).selectNoticeList(any(), anyInt(), anyLong());
 			assertThat(response.items()).isEmpty();
 			assertThat(response.totalPages()).isZero();
 			assertThat(response.page()).isEqualTo(1);
@@ -80,11 +87,11 @@ class NoticeServiceTest {
 		@Test
 		@DisplayName("L3 전체 페이지보다 큰 page면 목록 쿼리 없이 빈 목록과 정상 메타정보를 반환한다")
 		void pageBeyondTotal() {
-			given(noticeMapper.countNoticeList()).willReturn(235L);
+			given(noticeMapper.countNoticeList(any())).willReturn(235L);
 
-			PageResponse<NoticeSummary> response = noticeService.getNoticeList(new NoticeSearchRequest(99, 20));
+			PageResponse<NoticeSummary> response = noticeService.getNoticeList(pageRequest(99, 20));
 
-			verify(noticeMapper, never()).selectNoticeList(anyInt(), anyLong());
+			verify(noticeMapper, never()).selectNoticeList(any(), anyInt(), anyLong());
 			assertThat(response.items()).isEmpty();
 			assertThat(response.totalCount()).isEqualTo(235);
 			assertThat(response.page()).isEqualTo(99);
@@ -94,12 +101,39 @@ class NoticeServiceTest {
 		@Test
 		@DisplayName("L4 마지막 페이지는 목록 쿼리를 실행한다 (235건, page=12 → offset 220)")
 		void lastPage() {
-			given(noticeMapper.countNoticeList()).willReturn(235L);
-			given(noticeMapper.selectNoticeList(20, 220L)).willReturn(List.of(summary));
+			given(noticeMapper.countNoticeList(any())).willReturn(235L);
+			given(noticeMapper.selectNoticeList(any(), eq(20), eq(220L))).willReturn(List.of(summary));
 
-			PageResponse<NoticeSummary> response = noticeService.getNoticeList(new NoticeSearchRequest(12, 20));
+			PageResponse<NoticeSummary> response = noticeService.getNoticeList(pageRequest(12, 20));
 
 			assertThat(response.items()).hasSize(1);
+		}
+
+		@Test
+		@DisplayName("L5 검색 조건을 변환해 건수와 목록 쿼리에 같은 조건 객체로 전달한다")
+		void sameConditionForCountAndList() {
+			NoticeSearchRequest searchRequest = new NoticeSearchRequest(
+					1, 20, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 11, 10), "HR", "TITLE", "100%");
+			given(noticeMapper.countNoticeList(any())).willReturn(3L);
+			given(noticeMapper.selectNoticeList(any(), eq(20), eq(0L))).willReturn(List.of(summary));
+
+			PageResponse<NoticeSummary> response = noticeService.getNoticeList(searchRequest);
+
+			ArgumentCaptor<NoticeSearchCondition> countCaptor = ArgumentCaptor.forClass(NoticeSearchCondition.class);
+			ArgumentCaptor<NoticeSearchCondition> listCaptor = ArgumentCaptor.forClass(NoticeSearchCondition.class);
+			verify(noticeMapper).countNoticeList(countCaptor.capture());
+			verify(noticeMapper).selectNoticeList(listCaptor.capture(), eq(20), eq(0L));
+
+			assertThat(listCaptor.getValue()).isSameAs(countCaptor.getValue());
+			NoticeSearchCondition cond = countCaptor.getValue();
+			assertThat(cond.from()).isEqualTo(LocalDate.of(2026, 1, 1));
+			assertThat(cond.toExclusive()).isEqualTo(LocalDate.of(2026, 11, 11));
+			assertThat(cond.category()).isEqualTo("HR");
+			assertThat(cond.searchType()).isEqualTo("TITLE");
+			assertThat(cond.keywordPattern()).isEqualTo("100!%");
+
+			assertThat(response.totalCount()).isEqualTo(3);
+			assertThat(response.totalPages()).isEqualTo(1);
 		}
 	}
 

@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -288,6 +290,168 @@ class NoticeControllerTest {
 			verify(noticeService).getNoticeList(captor.capture());
 			assertThat(captor.getValue().page()).isEqualTo(2);
 			assertThat(captor.getValue().size()).isEqualTo(50);
+		}
+	}
+
+	@Nested
+	@DisplayName("목록 검색 조건")
+	class SearchParams {
+
+		private NoticeSearchRequest capturedRequest() {
+			ArgumentCaptor<NoticeSearchRequest> captor = ArgumentCaptor.forClass(NoticeSearchRequest.class);
+			verify(noticeService).getNoticeList(captor.capture());
+			return captor.getValue();
+		}
+
+		@Test
+		@DisplayName("Q1 모든 조건이 올바르면 200이고, 변환된 값이 Service에 전달된다 (keyword 앞뒤 공백 제거)")
+		void allParams() throws Exception {
+			mockMvc.perform(get(URL)
+					.param("from", "2026-01-01")
+					.param("to", "2026-11-10")
+					.param("category", "HR")
+					.param("searchType", "TITLE")
+					.param("keyword", "  정보보안교육  "))
+					.andExpect(status().isOk());
+
+			NoticeSearchRequest request = capturedRequest();
+			assertThat(request.from()).isEqualTo(LocalDate.of(2026, 1, 1));
+			assertThat(request.to()).isEqualTo(LocalDate.of(2026, 11, 10));
+			assertThat(request.category()).isEqualTo("HR");
+			assertThat(request.searchType()).isEqualTo("TITLE");
+			assertThat(request.keyword()).isEqualTo("정보보안교육");
+		}
+
+		@ParameterizedTest(name = "{0}={1}")
+		@CsvSource({
+				"from, 2026/11/10",
+				"from, 2026-13-01",
+				"from, abc",
+				"to, 20261110",
+				"to, 2026-02-30"
+		})
+		@DisplayName("Q2 날짜 형식이 yyyy-MM-dd가 아니면 400과 고정 문구, 내부 정보 없음")
+		void invalidDate(String param, String value) throws Exception {
+			mockMvc.perform(get(URL).param(param, value))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(1)))
+					.andExpect(jsonPath("$.errors[0].field").value(param))
+					.andExpect(jsonPath("$.errors[0].message").value("값의 형식이 올바르지 않습니다."))
+					.andExpect(content().string(not(containsStringIgnoringCase("java"))))
+					.andExpect(content().string(not(containsStringIgnoringCase("convert"))))
+					.andExpect(content().string(not(containsStringIgnoringCase("exception"))));
+		}
+
+		@Test
+		@DisplayName("Q3-1 from이 to보다 늦으면 400이고 오류는 to 필드로 표시한다")
+		void fromAfterTo() throws Exception {
+			mockMvc.perform(get(URL).param("from", "2026-11-11").param("to", "2026-11-10"))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(1)))
+					.andExpect(jsonPath("$.errors[0].field").value("to"))
+					.andExpect(jsonPath("$.errors[0].message").value("시작일은 종료일보다 늦을 수 없습니다."));
+		}
+
+		@Test
+		@DisplayName("Q3-2 from과 to가 같은 날이면 통과한다")
+		void sameDay() throws Exception {
+			mockMvc.perform(get(URL).param("from", "2026-11-10").param("to", "2026-11-10"))
+					.andExpect(status().isOk());
+		}
+
+		@ParameterizedTest(name = "category={0}")
+		@ValueSource(strings = { "NOTICE", "general" })
+		@DisplayName("Q4-1 category가 허용값이 아니면 400")
+		void categoryNotAllowed(String category) throws Exception {
+			mockMvc.perform(get(URL).param("category", category))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(1)))
+					.andExpect(jsonPath("$.errors[0].field").value("category"))
+					.andExpect(jsonPath("$.errors[0].message").value("구분은 GENERAL, IMPORTANT, HR 중 하나여야 합니다."));
+		}
+
+		@ParameterizedTest(name = "category=[{0}]")
+		@ValueSource(strings = { "", "   " })
+		@DisplayName("Q4-2 category가 비어 있으면 전체 조회(null)로 전달한다")
+		void blankCategory(String category) throws Exception {
+			mockMvc.perform(get(URL).param("category", category))
+					.andExpect(status().isOk());
+
+			assertThat(capturedRequest().category()).isNull();
+		}
+
+		@ParameterizedTest(name = "searchType={0}")
+		@ValueSource(strings = { "SUBJECT", "title" })
+		@DisplayName("Q5-1 searchType이 허용값이 아니면 400")
+		void searchTypeNotAllowed(String searchType) throws Exception {
+			mockMvc.perform(get(URL).param("searchType", searchType))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(1)))
+					.andExpect(jsonPath("$.errors[0].field").value("searchType"))
+					.andExpect(jsonPath("$.errors[0].message").value("검색 유형은 TITLE, CONTENT, ALL 중 하나여야 합니다."));
+		}
+
+		@Test
+		@DisplayName("Q5-2 searchType이 없으면 ALL로 전달한다")
+		void defaultSearchType() throws Exception {
+			mockMvc.perform(get(URL))
+					.andExpect(status().isOk());
+
+			assertThat(capturedRequest().searchType()).isEqualTo("ALL");
+		}
+
+		@ParameterizedTest(name = "searchType=[{0}]")
+		@ValueSource(strings = { "", "   " })
+		@DisplayName("Q5-3 searchType이 비어 있으면 ALL로 전달한다")
+		void blankSearchType(String searchType) throws Exception {
+			mockMvc.perform(get(URL).param("searchType", searchType))
+					.andExpect(status().isOk());
+
+			assertThat(capturedRequest().searchType()).isEqualTo("ALL");
+		}
+
+		@Test
+		@DisplayName("Q6-1 keyword가 21자면 400")
+		void keywordTooLong() throws Exception {
+			mockMvc.perform(get(URL).param("keyword", "가".repeat(21)))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.errors", hasSize(1)))
+					.andExpect(jsonPath("$.errors[0].field").value("keyword"))
+					.andExpect(jsonPath("$.errors[0].message").value("검색어는 20자 이하로 입력해 주세요."));
+		}
+
+		@Test
+		@DisplayName("Q6-2 keyword가 정확히 20자면 통과한다")
+		void keywordMaxLength() throws Exception {
+			mockMvc.perform(get(URL).param("keyword", "가".repeat(20)))
+					.andExpect(status().isOk());
+		}
+
+		@Test
+		@DisplayName("Q6-3 앞뒤 공백을 빼고 20자면 통과한다 (공백 포함 22자)")
+		void keywordMaxLengthAfterStrip() throws Exception {
+			mockMvc.perform(get(URL).param("keyword", " " + "가".repeat(20) + " "))
+					.andExpect(status().isOk());
+
+			assertThat(capturedRequest().keyword()).hasSize(20);
+		}
+
+		@ParameterizedTest(name = "keyword=[{0}]")
+		@ValueSource(strings = { "", "   " })
+		@DisplayName("Q7 keyword가 비어 있거나 공백뿐이면 조건에서 뺀다(null)")
+		void blankKeyword(String keyword) throws Exception {
+			mockMvc.perform(get(URL).param("keyword", keyword))
+					.andExpect(status().isOk());
+
+			assertThat(capturedRequest().keyword()).isNull();
+		}
+
+		@ParameterizedTest(name = "{0}만 지정")
+		@ValueSource(strings = { "from", "to" })
+		@DisplayName("Q8 from이나 to 중 하나만 있어도 통과한다")
+		void onlyOneDate(String param) throws Exception {
+			mockMvc.perform(get(URL).param(param, "2026-11-10"))
+					.andExpect(status().isOk());
 		}
 	}
 

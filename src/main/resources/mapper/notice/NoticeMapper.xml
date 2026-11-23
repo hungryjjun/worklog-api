@@ -19,6 +19,38 @@
 		</constructor>
 	</resultMap>
 
+	<!--
+		목록과 건수가 함께 쓰는 검색 조건. 값이 있는 조건만 붙는다.
+		- 기간: [from, to 다음 날) 반열린 구간. create_at에 함수를 씌우지 않아야 이후 인덱스를 쓸 수 있다.
+		- 검색어: keywordPattern은 Java에서 %, _, ! 를 이스케이프한 값이다 (NoticeSearchCondition.LIKE_ESCAPE와 같은 '!').
+	-->
+	<sql id="noticeSearchWhere">
+		 WHERE del_yn = 'N'
+		<if test="cond.from != null">
+		   AND create_at &gt;= #{cond.from}
+		</if>
+		<if test="cond.toExclusive != null">
+		   AND create_at &lt; #{cond.toExclusive}
+		</if>
+		<if test="cond.category != null">
+		   AND category = #{cond.category}
+		</if>
+		<if test="cond.keywordPattern != null">
+			<choose>
+				<when test="cond.searchType == 'TITLE'">
+		   AND title LIKE CONCAT('%', #{cond.keywordPattern}, '%') ESCAPE '!'
+				</when>
+				<when test="cond.searchType == 'CONTENT'">
+		   AND content LIKE CONCAT('%', #{cond.keywordPattern}, '%') ESCAPE '!'
+				</when>
+				<otherwise>
+		   AND (title LIKE CONCAT('%', #{cond.keywordPattern}, '%') ESCAPE '!'
+		        OR content LIKE CONCAT('%', #{cond.keywordPattern}, '%') ESCAPE '!')
+				</otherwise>
+			</choose>
+		</if>
+	</sql>
+
 	<!-- 목록 화면은 본문을 쓰지 않으므로 content는 조회하지 않는다. -->
 	<select id="selectNoticeList" resultMap="noticeSummaryMap">
 		SELECT notice_seq
@@ -28,7 +60,7 @@
 		     , create_emp_no
 		     , create_at
 		  FROM notice
-		 WHERE del_yn = 'N'
+		<include refid="noticeSearchWhere"/>
 		 ORDER BY notice_seq DESC
 		 LIMIT #{size} OFFSET #{offset}
 	</select>
@@ -36,7 +68,7 @@
 	<select id="countNoticeList" resultType="long">
 		SELECT COUNT(*)
 		  FROM notice
-		 WHERE del_yn = 'N'
+		<include refid="noticeSearchWhere"/>
 	</select>
     
     <insert id="insertNotice" parameterType="com.hungryjjun.worklogapi.notice.Notice" useGeneratedKeys="true" keyProperty="noticeSeq">

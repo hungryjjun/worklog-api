@@ -23,12 +23,14 @@ public class NoticeService {
 	// 건수와 목록을 같은 읽기 전용 트랜잭션에서 조회해, 두 쿼리 사이의 등록·삭제로 결과가 어긋나지 않게 한다.
 	@Transactional(readOnly = true)
 	public PageResponse<NoticeSummary> getNoticeList(NoticeSearchRequest request) {
-		long totalCount = noticeMapper.countNoticeList();
+		// 조건 객체를 한 번만 만들어 건수와 목록에 똑같이 넘긴다.
+		NoticeSearchCondition cond = NoticeSearchCondition.of(request);
+		long totalCount = noticeMapper.countNoticeList(cond);
 
 		// 0건이거나 요청한 페이지가 범위를 넘으면 결과가 빈 목록이므로 목록 쿼리를 생략한다.
 		List<NoticeSummary> items = (request.offset() >= totalCount)
 				? List.of()
-				: noticeMapper.selectNoticeList(request.size(), request.offset());
+				: noticeMapper.selectNoticeList(cond, request.size(), request.offset());
 
 		return PageResponse.of(items, totalCount, request.page(), request.size());
 	}
