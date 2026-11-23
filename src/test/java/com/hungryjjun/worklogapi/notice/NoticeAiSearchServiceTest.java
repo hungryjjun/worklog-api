@@ -20,12 +20,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+
+import com.anthropic.models.messages.OutputConfig;
 
 import com.hungryjjun.worklogapi.common.ExternalServiceException;
 import com.hungryjjun.worklogapi.common.PageResponse;
@@ -53,6 +58,10 @@ class NoticeAiSearchServiceTest {
 	private static class FakeChatModel implements ChatModel {
 
 		private String text;
+		// 응답 종료 이유. 실제 Anthropic 응답의 stop_reason 문자열과 같은 값(end_turn, max_tokens ...)을 넣는다.
+		private String finishReason = "end_turn";
+		// true면 실제 Haiku 5.5처럼 text 앞에 내용이 생략된(빈) thinking 블록 Generation을 하나 더 붙인다.
+		private boolean withThinking;
 		private RuntimeException error;
 		private Prompt lastPrompt;
 
@@ -62,7 +71,21 @@ class NoticeAiSearchServiceTest {
 			if (error != null) {
 				throw error;
 			}
-			return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+			ChatGenerationMetadata metadata = ChatGenerationMetadata.builder().finishReason(finishReason).build();
+			// AnthropicChatModel은 text 블록을 모아 항상 첫 번째 Generation에 넣고, thinking 블록은 그 뒤에 둔다.
+			Generation answer = new Generation(new AssistantMessage(text), metadata);
+			if (!withThinking) {
+				return new ChatResponse(List.of(answer));
+			}
+			Generation thinking = new Generation(AssistantMessage.builder().content("").build(), metadata);
+			return new ChatResponse(List.of(answer, thinking));
+		}
+
+		// ChatClient는 모델의 기본 옵션 위에 호출별 옵션을 합친다. 운영(AnthropicChatModel)과 같은 타입을 돌려줘야
+		// effort 같은 Anthropic 전용 옵션이 Prompt에 남는지 확인할 수 있다.
+		@Override
+		public ChatOptions getOptions() {
+			return AnthropicChatOptions.builder().build();
 		}
 	}
 
@@ -358,6 +381,37 @@ class NoticeAiSearchServiceTest {
 					.hasMessage(FAILURE_MESSAGE)
 					.hasCause(external);
 			verify(noticeService, never()).getNoticeList(any());
+		}
+
+		@Test
+		@DisplayName("F3 (2026-11-23 장애 재현) thinking이 출력 상한을 다 써서 글 없이 max_tokens로 끝나면 502로 바꾸고, 원인에 max_tokens를 남긴다")
+		void emptyAnswerByMaxTokens() {
+			// 실제 응답: 빈 thinking 블록 + text 없음 + stop_reason=max_tokens → Converter가 빈 문자열을 받아 Jackson 오류가 났다.
+			chatModel.text = "";
+			chatModel.withThinking = true;
+			chatModel.finishReason = "max_tokens";
+
+			assertThatThrownBy(() -> service.search(QUESTION))
+					.isInstanceOf(ExternalServiceException.class)
+					.hasMessage(FAILURE_MESSAGE)
+					// 응답 메시지는 고정 문구 그대로 두고, 공통 처리기가 log.error로 남기는 cause에서 원인을 알 수 있어야 한다.
+					.cause()
+					.hasMessageContaining("max_tokens");
+			verify(noticeService, never()).getNoticeList(any());
+		}
+
+		@Test
+		@DisplayName("F4 이 호출은 출력 상한 1024토큰, effort LOW로 요청한다 (thinking이 상한을 다 쓰지 않도록)")
+		void requestOptions() {
+			aiReturns("정보보안", null, null, null);
+
+			service.search(QUESTION);
+
+			assertThat(chatModel.lastPrompt.getOptions()).isInstanceOf(AnthropicChatOptions.class);
+			AnthropicChatOptions options = (AnthropicChatOptions) chatModel.lastPrompt.getOptions();
+			assertThat(options.getMaxTokens()).isEqualTo(1024);
+			assertThat(options.getOutputConfig()).isNotNull();
+			assertThat(options.getOutputConfig().effort()).contains(OutputConfig.Effort.LOW);
 		}
 
 		@Test
